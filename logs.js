@@ -4,12 +4,7 @@ const spawn    = require('child_process').spawn;
 const path     = require('path');
 const fs       = require('fs-extra');
 const os       = require('os');
-
-if(global && global.master){
-
-    console.log('The global master is: ', global.master);
-
-}
+const cl       = require('cl');
 
 if(!process.env.LUNASTRO_HOST || !process.env.LUNASTRO_LOGS){
 
@@ -24,6 +19,47 @@ if(!process.env.LUNASTRO_HOST || !process.env.LUNASTRO_LOGS){
     if(!process.env.LUNASTRO_LOGS) console.log('@logs LUNASTRO_LOGS is not defined');
 
     console.log("\n");
+
+}
+
+
+let forEachPromise = function(arr, callback){
+
+    return new Promise(function(resolve, reject){
+
+        var index = 0;
+
+        var tick = function(){
+
+            if(typeof arr[index] === 'undefined'){
+
+                return resolve();
+
+            }
+
+            var callRet = callback(arr[index], index);
+
+            // Se não tiver then
+            if(!callRet.then){
+
+                index++;
+                tick();
+
+            }
+
+            callRet.then(function(){
+
+                index++;
+
+                tick();
+
+            });
+
+        }
+
+        tick();
+
+    });
 
 }
 
@@ -276,12 +312,6 @@ const Logs = {
 
         }
 
-        if(global.master){
-
-            label = global.master + '.' + label;
-
-        }
-
         var filename = path.join(dayFile, label + '.log');
 
         if(typeof data == 'object'){
@@ -340,21 +370,8 @@ const Logs = {
 
     notify(label, data, priority){
 
-        if(!global.helpers || !global.helpers.access){
-
-            return setTimeout(function(){
-
-                Logs.notify(label, data, priority);
-
-            }, 2000);
-
-        }
-
-        if(priority > 10){
-
-            global.modules.notify.sendAdmins(`Log ${label}`, data.substr(0, 100));
-
-        }
+        // @todo Notificar, baseado em uma configuração previa
+        // (email, sms, slack, whatsapp, telegram, push, etc)
 
     },
 
@@ -461,7 +478,7 @@ const Logs = {
             break;
             case 'EADDRINUSE':
 
-                var pidFilePath = path.join(global.dir.logs, 'last.pid');
+                var pidFilePath = path.join(process.cwd(), 'lastpid');
 
                 fs.exists(pidFilePath).then(exists => {
 
@@ -645,13 +662,9 @@ const Logs = {
 
                         } else{
 
-                            console.log(`Erro ao enviar ${originalDLength*8} bytes em erros(${log}) ao astr`);
+                            console.log(`Erro ao enviar ${originalDLength*8} bytes em erros(${log}) ao backup`);
 
-                            if(global && global.helpers && global.helpers.access && global.helpers.access.notify){
-
-                                global.helpers.access.notify(`Erro ao enviar ${originalDLength*8} bytes em erros(${log}) pois ${res.message}`);
-
-                            }
+                            Logs.notify('Erro ao enviar logs ao backup', 'Não foi possível realizar o envio dos logs ao sistema de backup');
 
                         }
 
@@ -800,7 +813,7 @@ const Logs = {
         while(vigencyDays--) arrInutil.push(vigencyDays);
 
         // @todo Tirar dependencia de helpers
-        return global.helpers.f.forEachPromise(arrInutil, () => {
+        return forEachPromise(arrInutil, () => {
 
             var dayPath = Logs.getDayPath(date);
 
@@ -881,27 +894,21 @@ const Logs = {
 
     startup(){
 
-        if(!global.cl){
-
-            return setTimeout(Logs.startup, 2000);
-
-        }
-
         // @todo Modularizar que cl seja um modulo adicionavel
 
-        global.cl.add('log to astr', () => {
+        cl.add('log to astr', () => {
 
             Logs.sendYesterdayToLunastro();
 
         });
 
-        global.cl.add('log review all', () => {
+        cl.add('log review all', () => {
 
             console.log(Logs.getReviews());
 
         });
 
-        global.cl.add('log show n ?', (logName) => {
+        cl.add('log show n ?', (logName) => {
 
             var date = new Date();
 
@@ -917,7 +924,7 @@ const Logs = {
 
         });
 
-        global.cl.add('test log', () => {
+        cl.add('test log', () => {
 
             Logs.save('test log', {
                 blank: true
@@ -925,7 +932,7 @@ const Logs = {
 
         });
 
-        global.cl.add('log show ?', (logName) => {
+        cl.add('log show ?', (logName) => {
 
             var date = new Date();
 
